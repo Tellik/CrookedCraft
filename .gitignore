@@ -1,58 +1,28 @@
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
-.kotlin
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
 
-### IntelliJ IDEA ###
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
+# idea
+out
+*.ipr
 *.iws
 *.iml
-*.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
+.idea
 
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
+# gradle
+build
+.gradle
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
-.vscode/
-
-### Mac OS ###
-.DS_Store
-
-# Minecraft dev run directories
-run/
-runs/
-
-# Minecraft logs / crash reports
-logs/
-crash-reports/
+# other
+eclipse
+run
+run-data
+logs
 *.log
-hs_err_pid*.log
-replay_pid*.log
 
-# Local game data (sometimes created by runs)
-world/
-saves/
+# Files from Forge MDK
+forge*changelog.txt
