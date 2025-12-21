@@ -1,0 +1,9 @@
+{
+  "scan_mode": "below_only",
+  "sources": [
+    { "block": "minecraft:fire", "boil_ticks": 240 },
+    { "block": "minecraft:torch", "boil_ticks": 260 },
+    { "block": "minecraft:campfire", "boil_ticks": 200 },
+    { "fluid": "minecraft:lava", "boil_ticks": 120 }
+  ]
+}
