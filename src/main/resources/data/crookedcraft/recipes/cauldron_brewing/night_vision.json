@@ -1,0 +1,12 @@
+{
+  "type": "crookedcraft:cauldron_brewing",
+  "liquid": "minecraft:water",
+  "ingredients": [
+    { "item": "minecraft:carrot" },
+    { "item": "minecraft:gold_nugget" }
+  ],
+  "result": {
+    "item": "minecraft:potion",
+    "potion": "minecraft:night_vision"
+  }
+}
