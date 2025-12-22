@@ -1,8 +1,8 @@
 {
   "replace": false,
   "values": [
-    "crookedcraft:brew_cauldron",
     "crookedcraft:brew_water_cauldron",
+    "crookedcraft:brew_cauldron",
     "crookedcraft:brew_lava_cauldron",
     "crookedcraft:brew_powder_snow_cauldron"
   ]

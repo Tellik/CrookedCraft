@@ -1,0 +1,10 @@
+{
+  "itemGroup.crookedcraft": "CrookedCraft",
+
+  "block.crookedcraft.brew_cauldron": "Brew Cauldron",
+  "block.crookedcraft.brew_water_cauldron": "Brew Cauldron (Water)",
+  "block.crookedcraft.brew_lava_cauldron": "Brew Cauldron (Lava)",
+  "block.crookedcraft.brew_powder_snow_cauldron": "Brew Cauldron (Powder Snow)",
+
+  "item.crookedcraft.brew_cauldron": "Brew Cauldron"
+}

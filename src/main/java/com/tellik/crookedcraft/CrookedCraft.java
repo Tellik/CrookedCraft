@@ -1,17 +1,16 @@
 package com.tellik.crookedcraft;
 
 import com.mojang.logging.LogUtils;
+import com.tellik.crookedcraft.brewing.ModBrewingBlocks;
+import com.tellik.crookedcraft.brewing.ModBrewingItems;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.world.food.FoodProperties;
-import net.minecraft.world.item.BlockItem;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
-import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockBehaviour;
-import net.minecraft.world.level.material.MapColor;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
@@ -28,109 +27,100 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 import org.slf4j.Logger;
 
-// The value here should match an entry in the META-INF/mods.toml file
 @Mod(CrookedCraft.MODID)
 public class CrookedCraft {
 
-    // Define mod id in a common place for everything to reference
     public static final String MODID = "crookedcraft";
-
-    // Directly reference a slf4j logger
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    // Create a Deferred Register to hold Blocks which will all be registered under the "crookedcraft" namespace
-    public static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, MODID);
+    // Base registers (kept for future general content)
+    public static final DeferredRegister<Block> BLOCKS =
+            DeferredRegister.create(ForgeRegistries.BLOCKS, MODID);
 
-    // Create a Deferred Register to hold Items which will all be registered under the "crookedcraft" namespace
-    public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID);
+    public static final DeferredRegister<net.minecraft.world.item.Item> ITEMS =
+            DeferredRegister.create(ForgeRegistries.ITEMS, MODID);
 
-    // Create a Deferred Register to hold CreativeModeTabs which will all be registered under the "crookedcraft" namespace
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS =
             DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
-    // Creates a new Block with the id "crookedcraft:example_block"
-    public static final RegistryObject<Block> EXAMPLE_BLOCK =
-            BLOCKS.register("example_block", () -> new Block(BlockBehaviour.Properties.of().mapColor(MapColor.STONE)));
+    public static final RegistryObject<CreativeModeTab> CROOKEDCRAFT_TAB =
+            CREATIVE_MODE_TABS.register("crookedcraft", () -> CreativeModeTab.builder()
+                    .title(Component.translatable("itemGroup.crookedcraft"))
+                    .icon(() -> new ItemStack(ModBrewingBlocks.BREW_CAULDRON_ITEM.get()))
+                    .displayItems((params, output) -> {
+                        // Brewing (2.5.x)
+                        output.accept(ModBrewingBlocks.BREW_CAULDRON_ITEM.get());
+                        output.accept(ModBrewingItems.BLACK_SLUDGE.get());
+                        output.accept(ModBrewingItems.DOOMED_SLUDGE.get());
 
-    // Creates a new BlockItem with the id "crookedcraft:example_block"
-    public static final RegistryObject<Item> EXAMPLE_BLOCK_ITEM =
-            ITEMS.register("example_block", () -> new BlockItem(EXAMPLE_BLOCK.get(), new Item.Properties()));
-
-    // Creates a new food item with the id "crookedcraft:example_item"
-    public static final RegistryObject<Item> EXAMPLE_ITEM =
-            ITEMS.register("example_item", () -> new Item(
-                    new Item.Properties().food(new FoodProperties.Builder()
-                            .alwaysEat()
-                            .nutrition(1)
-                            .saturationMod(2f)
-                            .build()
-                    )
-            ));
-
-    // Creates a creative tab with the id "crookedcraft:example_tab"
-    public static final RegistryObject<CreativeModeTab> EXAMPLE_TAB =
-            CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
-                    .withTabsBefore(CreativeModeTabs.COMBAT)
-                    .icon(() -> EXAMPLE_ITEM.get().getDefaultInstance())
-                    .displayItems((parameters, output) -> output.accept(EXAMPLE_ITEM.get()))
+                        // Add more later as you implement them (brew bottle, etc.)
+                    })
                     .build()
             );
 
-    /**
-     * Forge injects the mod loading context into your mod constructor.
-     * This avoids the deprecated static global getters like FMLJavaModLoadingContext.get()
-     * and ModLoadingContext.get().
-     */
     public CrookedCraft(final FMLJavaModLoadingContext context) {
         final IEventBus modEventBus = context.getModEventBus();
 
-        // Register the commonSetup method for modloading
-        modEventBus.addListener(this::commonSetup);
+        // Force-load brewing items so CrookedCraft.ITEMS.register(...) executes.
+        // Without this, ModBrewingItems' static RegistryObject fields may never initialize.
+        ModBrewingItems.init();
 
-        // Register our Deferred Registers
+        // Module registers (register their blocks/items onto our DeferredRegisters)
+        ModBrewingBlocks.register(modEventBus);
+
+        // Lifecycle listeners
+        modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(this::addCreative);
+
+        // Register our DeferredRegisters
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         CREATIVE_MODE_TABS.register(modEventBus);
 
-        // Register ourselves for server and other game events we are interested in
+        // Forge bus registrations (only instance subscribers go here)
         MinecraftForge.EVENT_BUS.register(this);
 
-        // Register the item to a creative tab
-        modEventBus.addListener(this::addCreative);
+        // IMPORTANT:
+        // BrewingForgeEvents is annotated with:
+        // @Mod.EventBusSubscriber(modid="crookedcraft", bus=FORGE)
+        // so you must NOT manually register a new instance here (it can cause double event firing).
+        // If you ever remove that annotation, THEN you would register it here.
 
-        // Register our mod's ForgeConfigSpec so Forge can create and load the config file
         context.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
-        LOGGER.info("HELLO FROM COMMON SETUP");
+        LOGGER.info("[{}] Common setup", MODID);
 
         if (Config.logDirtBlock) {
             LOGGER.info("DIRT BLOCK >> {}", ForgeRegistries.BLOCKS.getKey(Blocks.DIRT));
         }
 
-        LOGGER.info(Config.magicNumberIntroduction + Config.magicNumber);
-
+        LOGGER.info("{}{}", Config.magicNumberIntroduction, Config.magicNumber);
         Config.items.forEach((item) -> LOGGER.info("ITEM >> {}", item));
     }
 
-    // Add the example block item to the building blocks tab
     private void addCreative(final BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
-            event.accept(EXAMPLE_BLOCK_ITEM);
+        // Keep in a vanilla tab for convenience too:
+        if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
+            event.accept(ModBrewingBlocks.BREW_CAULDRON_ITEM.get());
+
+            // Handy for testing during 2.5.x; you can remove later if you want these only in your mod tab
+            event.accept(ModBrewingItems.BLACK_SLUDGE.get());
+            event.accept(ModBrewingItems.DOOMED_SLUDGE.get());
         }
     }
 
     @SubscribeEvent
     public void onServerStarting(final ServerStartingEvent event) {
-        LOGGER.info("HELLO from server starting");
+        LOGGER.info("[{}] Server starting", MODID);
     }
 
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(final FMLClientSetupEvent event) {
-            LOGGER.info("HELLO FROM CLIENT SETUP");
+            LOGGER.info("[{}] Client setup", MODID);
             LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
         }
     }

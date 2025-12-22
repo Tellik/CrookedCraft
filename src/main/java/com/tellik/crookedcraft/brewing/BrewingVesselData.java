@@ -12,6 +12,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.UUID;
 
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
@@ -31,10 +32,19 @@ public final class BrewingVesselData extends SavedData {
         public final Map<ResourceLocation, Integer> ingredients = new HashMap<>();
 
         /**
-         * Legacy field: previously used for a "pending fill window".
-         * Kept for NBT backward compatibility; currently unused by the shim approach.
+         * Short-lived window used to avoid losing tracking when a player is filling an EMPTY cauldron.
+         * Bucket use mutates the block state after the interact event finishes, so we keep the entry alive
+         * long enough for the tick loop to see it become BREW_WATER_CAULDRON.
          */
         public int pendingFillTicks = 0;
+
+        /**
+         * Anti-dupe support for dropped-item insertion:
+         * UUID -> ticks remaining before we allow that entity UUID again.
+         *
+         * NOT serialized: transient runtime guard only.
+         */
+        public final Map<UUID, Integer> pendingDrops = new HashMap<>();
 
         public void clearAll() {
             boilProgress = 0;
@@ -46,6 +56,7 @@ public final class BrewingVesselData extends SavedData {
 
             ingredients.clear();
             pendingFillTicks = 0;
+            pendingDrops.clear();
         }
     }
 
@@ -58,33 +69,34 @@ public final class BrewingVesselData extends SavedData {
     }
 
     /**
-     * Ensure a vessel entry exists for this position (creates if absent).
-     * Preferred API for call sites to avoid inverted boolean usage.
+     * Ensure a VesselState exists for posLong (and marks dirty if newly created).
      */
     public void ensureTracked(long posLong) {
-        if (vessels.putIfAbsent(posLong, new VesselState()) == null) {
+        if (!vessels.containsKey(posLong)) {
+            vessels.put(posLong, new VesselState());
             setDirty();
         }
+    }
+
+    /**
+     * Returns an existing VesselState (must be tracked already).
+     * Prefer calling ensureTracked(posLong) first.
+     */
+    public VesselState getTrackedState(long posLong) {
+        return vessels.get(posLong);
+    }
+
+    /**
+     * Returns the VesselState if tracked, otherwise null. (Status UI helper)
+     */
+    public VesselState getStateIfTracked(long posLong) {
+        return vessels.get(posLong);
     }
 
     public void untrack(long posLong) {
         if (vessels.remove(posLong) != null) {
             setDirty();
         }
-    }
-
-    /**
-     * Preferred accessor for call sites that expect a state after ensureTracked().
-     * If missing unexpectedly, creates one to preserve invariants.
-     */
-    public VesselState getTrackedState(long posLong) {
-        VesselState v = vessels.get(posLong);
-        if (v == null) {
-            v = new VesselState();
-            vessels.put(posLong, v);
-            setDirty();
-        }
-        return v;
     }
 
     public Iterator<Map.Entry<Long, VesselState>> iterator() {
@@ -119,6 +131,8 @@ public final class BrewingVesselData extends SavedData {
                 ingList.add(it);
             }
             vtag.put("ingredients", ingList);
+
+            // NOTE: pendingDrops is intentionally NOT serialized.
 
             list.add(vtag);
         }
