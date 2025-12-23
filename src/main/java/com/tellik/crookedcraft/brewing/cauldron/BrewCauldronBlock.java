@@ -16,14 +16,40 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
-public final class BrewCauldronBlock extends AbstractCauldronBlock {
+public final class BrewCauldronBlock extends BaseBrewAbstractCauldronBlock {
     private static final float RAIN_FILL_CHANCE = 0.05F;
     private static final float POWDER_SNOW_FILL_CHANCE = 0.10F;
 
     public BrewCauldronBlock(Properties props) {
         super(props, BrewCauldronInteractionMaps.emptyMap());
     }
+
+    @Override
+    public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        return BrewCauldronVoxelShapes.TUB;
+    }
+
+    @Override
+    public VoxelShape getInteractionShape(BlockState state, BlockGetter level, BlockPos pos) {
+        // Keeps ray-trace interaction aligned with the outline + collision.
+        // If you later want “more click-through”, we can slim this down further.
+        return BrewCauldronVoxelShapes.TUB;
+    }
+
+    @Override
+    public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        // This is the outline wireframe you see when looking at the block.
+        // Returning the same tub shape prevents a mismatched outline box.
+        return BrewCauldronVoxelShapes.TUB;
+    }
+
+    // ------------------------------------------------------------------------
+    // Vanilla-like cauldron overrides
+    // ------------------------------------------------------------------------
 
     @Override
     public boolean isFull(BlockState state) {

@@ -8,7 +8,7 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.LayeredCauldronBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
-public final class BrewPowderSnowCauldronBlock extends LayeredCauldronBlock {
+public final class BrewPowderSnowCauldronBlock extends BaseBrewLayeredCauldronBlock {
     public BrewPowderSnowCauldronBlock(Properties props) {
         super(props, (precip) -> precip == Biome.Precipitation.SNOW, BrewCauldronInteractionMaps.powderSnowMap());
     }

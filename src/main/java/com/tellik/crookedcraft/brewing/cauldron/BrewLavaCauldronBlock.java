@@ -4,10 +4,10 @@ import com.tellik.crookedcraft.brewing.ModBrewingBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
-import net.minecraft.world.level.block.AbstractCauldronBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
-public final class BrewLavaCauldronBlock extends AbstractCauldronBlock {
+public final class BrewLavaCauldronBlock extends BaseBrewAbstractCauldronBlock {
+
     public BrewLavaCauldronBlock(Properties props) {
         super(props, BrewCauldronInteractionMaps.lavaMap());
     }

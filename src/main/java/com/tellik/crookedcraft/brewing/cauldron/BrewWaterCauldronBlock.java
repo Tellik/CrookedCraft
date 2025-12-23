@@ -14,7 +14,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 
-public final class BrewWaterCauldronBlock extends LayeredCauldronBlock {
+public final class BrewWaterCauldronBlock extends BaseBrewLayeredCauldronBlock {
 
     public static final EnumProperty<BrewState> BREW_STATE = EnumProperty.create("brew_state", BrewState.class);
 

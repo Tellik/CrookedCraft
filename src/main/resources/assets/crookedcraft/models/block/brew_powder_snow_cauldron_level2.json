@@ -4,7 +4,7 @@
   "texture_size": [80, 80],
   "textures": {
     "0": "crookedcraft:block/brew_cauldron",
-    "2": "crookedcraft:block/lava_brew_cauldron",
+    "3": "crookedcraft:block/powder_snow_brew_cauldron",
     "particle": "texture"
   },
   "elements": [
@@ -569,15 +569,15 @@
     },
     {
       "from": [4, 5.5, 4],
-      "to": [12, 13.75, 12],
+      "to": [12, 10, 12],
       "rotation": {"angle": 0, "axis": "y", "origin": [3.25, 5.5, 3.5]},
       "faces": {
-        "north": {"uv": [0, 0, 16, 16], "texture": "#2"},
-        "east": {"uv": [0, 0, 16, 17.25], "texture": "#2"},
-        "south": {"uv": [0, 0, 16, 16], "texture": "#2"},
-        "west": {"uv": [0, 0, 16, 16], "texture": "#2"},
-        "up": {"uv": [16, 16, 0, 0], "tintindex": 0, "texture": "#2"},
-        "down": {"uv": [16, 0, 0, 16], "texture": "#2"}
+        "north": {"uv": [0, 0, 16, 16], "texture": "#3"},
+        "east": {"uv": [0, 0, 16, 17.25], "texture": "#3"},
+        "south": {"uv": [0, 0, 16, 16], "texture": "#3"},
+        "west": {"uv": [0, 0, 16, 16], "texture": "#3"},
+        "up": {"uv": [16, 16, 0, 0], "tintindex": 0, "texture": "#3"},
+        "down": {"uv": [16, 0, 0, 16], "texture": "#3"}
       }
     }
   ],

@@ -17,7 +17,7 @@ public final class BrewingClientColors {
     @SubscribeEvent
     public static void onRegisterBlockColors(RegisterColorHandlersEvent.Block event) {
         event.register((state, level, pos, tintIndex) -> {
-            if (tintIndex != 0) return 0xFFFFFFFF;
+            if (tintIndex != 0) return 0xFF0000FF;
 
             BrewWaterCauldronBlock.BrewState brewState = state.getValue(BrewWaterCauldronBlock.BREW_STATE);
 
