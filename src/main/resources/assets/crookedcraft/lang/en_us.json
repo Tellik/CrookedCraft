@@ -6,5 +6,8 @@
   "block.crookedcraft.brew_lava_cauldron": "Brew Cauldron (Lava)",
   "block.crookedcraft.brew_powder_snow_cauldron": "Brew Cauldron (Powder Snow)",
 
-  "item.crookedcraft.brew_cauldron": "Brew Cauldron"
+  "item.crookedcraft.brew_cauldron": "Brew Cauldron",
+
+  "item.crookedcraft.black_sludge": "Black Sludge",
+  "item.crookedcraft.doomed_sludge": "Doomed Sludge"
 }

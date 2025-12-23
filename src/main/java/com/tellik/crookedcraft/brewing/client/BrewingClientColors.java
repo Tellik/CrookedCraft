@@ -2,6 +2,7 @@ package com.tellik.crookedcraft.brewing.client;
 
 import com.tellik.crookedcraft.CrookedCraft;
 import com.tellik.crookedcraft.brewing.ModBrewingBlocks;
+import com.tellik.crookedcraft.brewing.ModBrewingItems;
 import com.tellik.crookedcraft.brewing.cauldron.BrewWaterCauldronBlock;
 import net.minecraft.client.renderer.BiomeColors;
 import net.minecraftforge.api.distmarker.Dist;
@@ -16,27 +17,31 @@ public final class BrewingClientColors {
     @SubscribeEvent
     public static void onRegisterBlockColors(RegisterColorHandlersEvent.Block event) {
         event.register((state, level, pos, tintIndex) -> {
-            // Only tint the liquid surface layer
             if (tintIndex != 0) return 0xFFFFFFFF;
 
             BrewWaterCauldronBlock.BrewState brewState = state.getValue(BrewWaterCauldronBlock.BREW_STATE);
 
-            // Default: normal biome-tinted water
             if (brewState == BrewWaterCauldronBlock.BrewState.NONE) {
-                if (level == null || pos == null) {
-                    return 0xFF3F76E4; // vanilla fallback-ish
-                }
+                if (level == null || pos == null) return 0xFF3F76E4;
                 return 0xFF000000 | BiomeColors.getAverageWaterColor(level, pos);
             }
 
-            // COMPLETE/DOOMED colors are intentionally simple for now.
-            // In a later milestone we can tint by resulting potion color (needs synced recipe/result info).
             if (brewState == BrewWaterCauldronBlock.BrewState.COMPLETE) {
-                return 0xFF66FF66; // green-ish success tint (placeholder)
+                return 0xFF66FF66;
             }
 
-            // DOOMED
-            return 0xFF101010; // near-black ruined tint
+            return 0xFF101010;
         }, ModBrewingBlocks.BREW_WATER_CAULDRON.get());
+    }
+
+    @SubscribeEvent
+    public static void onRegisterItemColors(RegisterColorHandlersEvent.Item event) {
+        // With the model:
+        // layer0 = potion_overlay (bottle/outline) -> NOT tinted
+        // layer1 = potion (liquid) -> tinted black
+        event.register((stack, tintIndex) -> {
+            if (tintIndex == 1) return 0xFF000000; // black liquid
+            return 0xFFFFFFFF;                    // normal bottle/overlay
+        }, ModBrewingItems.BLACK_SLUDGE.get());
     }
 }

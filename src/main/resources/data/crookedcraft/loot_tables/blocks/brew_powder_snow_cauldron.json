@@ -5,6 +5,9 @@
       "rolls": 1,
       "entries": [
         { "type": "minecraft:item", "name": "crookedcraft:brew_cauldron" }
+      ],
+      "conditions": [
+        { "condition": "minecraft:survives_explosion" }
       ]
     }
   ]

@@ -1,10 +1,13 @@
 package com.tellik.crookedcraft.brewing.cauldron;
 
+import com.tellik.crookedcraft.brewing.BrewingVesselData;
 import com.tellik.crookedcraft.brewing.ModBrewingBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.AbstractCauldronBlock;
@@ -13,7 +16,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
-import net.minecraft.world.level.BlockGetter;
 
 public final class BrewCauldronBlock extends AbstractCauldronBlock {
     private static final float RAIN_FILL_CHANCE = 0.05F;
@@ -30,7 +32,6 @@ public final class BrewCauldronBlock extends AbstractCauldronBlock {
 
     @Override
     public ItemStack getCloneItemStack(BlockGetter level, BlockPos pos, BlockState state) {
-        // Always pick the brew cauldron item, never vanilla cauldron.
         return new ItemStack(ModBrewingBlocks.BREW_CAULDRON_ITEM.get());
     }
 
@@ -46,6 +47,13 @@ public final class BrewCauldronBlock extends AbstractCauldronBlock {
                                 .setValue(LayeredCauldronBlock.LEVEL, 1)
                 );
                 level.gameEvent(null, GameEvent.BLOCK_CHANGE, pos);
+
+                // CRITICAL: rain-created water cauldrons must be tracked or they will never boil until interacted with.
+                if (level instanceof ServerLevel serverLevel) {
+                    BrewingVesselData data = BrewingVesselData.get(serverLevel);
+                    data.ensureTracked(pos.asLong());
+                    data.setDirty();
+                }
             }
         } else if (precipitation == Biome.Precipitation.SNOW) {
             if (level.getRandom().nextFloat() < POWDER_SNOW_FILL_CHANCE) {
@@ -69,6 +77,13 @@ public final class BrewCauldronBlock extends AbstractCauldronBlock {
             );
             level.playSound(null, pos, SoundEvents.BUCKET_EMPTY, SoundSource.BLOCKS, 1.0F, 1.0F);
             level.gameEvent(null, GameEvent.BLOCK_CHANGE, pos);
+
+            // If you ever re-enable drip-filling, this keeps boiling correct too.
+            if (level instanceof ServerLevel serverLevel) {
+                BrewingVesselData data = BrewingVesselData.get(serverLevel);
+                data.ensureTracked(pos.asLong());
+                data.setDirty();
+            }
             return;
         }
 

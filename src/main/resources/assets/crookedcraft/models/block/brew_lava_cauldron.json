@@ -3,8 +3,8 @@
   "credit": "Made by Shia",
   "texture_size": [80, 80],
   "textures": {
-    "0": "crookedcraft:block/brew_cauldron",
-    "particle": "crookedcraft:block/brew_cauldron"
+    "0": "block/texture",
+    "particle": "block/texture"
   },
   "elements": [
     {

@@ -1,15 +1,8 @@
 {
-  "type": "minecraft:crafting_shaped",
-  "pattern": [
-    "I I",
-    "I I",
-    "III"
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    { "item": "minecraft:cauldron" },
+    { "item": "minecraft:blaze_powder" }
   ],
-  "key": {
-    "I": { "item": "minecraft:iron_ingot" }
-  },
-  "result": {
-    "item": "crookedcraft:brew_cauldron",
-    "count": 1
-  }
+  "result": { "item": "crookedcraft:brew_cauldron", "count": 1 }
 }

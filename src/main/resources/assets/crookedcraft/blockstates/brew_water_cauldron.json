@@ -1,15 +1,15 @@
 {
   "variants": {
-    "level=1,brew_state=none": { "model": "minecraft:block/water_cauldron_level1" },
-    "level=2,brew_state=none": { "model": "minecraft:block/water_cauldron_level2" },
-    "level=3,brew_state=none": { "model": "minecraft:block/water_cauldron_full" },
+    "level=1": { "model": "crookedcraft:block/brew_water_cauldron_level1" },
+    "level=2": { "model": "crookedcraft:block/brew_water_cauldron_level2" },
+    "level=3": { "model": "crookedcraft:block/brew_water_cauldron_full" },
 
-    "level=1,brew_state=complete": { "model": "minecraft:block/water_cauldron_level1" },
-    "level=2,brew_state=complete": { "model": "minecraft:block/water_cauldron_level2" },
-    "level=3,brew_state=complete": { "model": "minecraft:block/water_cauldron_full" },
+    "level=1,brew_state=complete": { "model": "crookedcraft:block/brew_water_cauldron_level1" },
+    "level=2,brew_state=complete": { "model": "crookedcraft:block/brew_water_cauldron_level2" },
+    "level=3,brew_state=complete": { "model": "crookedcraft:block/brew_water_cauldron_full" },
 
-    "level=1,brew_state=doomed": { "model": "minecraft:block/water_cauldron_level1" },
-    "level=2,brew_state=doomed": { "model": "minecraft:block/water_cauldron_level2" },
-    "level=3,brew_state=doomed": { "model": "minecraft:block/water_cauldron_full" }
+    "level=1,brew_state=doomed": { "model": "crookedcraft:block/brew_water_cauldron_level1" },
+    "level=2,brew_state=doomed": { "model": "crookedcraft:block/brew_water_cauldron_level2" },
+    "level=3,brew_state=doomed": { "model": "crookedcraft:block/brew_water_cauldron_full" }
   }
 }

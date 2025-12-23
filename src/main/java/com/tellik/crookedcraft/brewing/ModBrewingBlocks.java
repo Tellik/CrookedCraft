@@ -5,13 +5,13 @@ import com.tellik.crookedcraft.brewing.cauldron.BrewCauldronBlock;
 import com.tellik.crookedcraft.brewing.cauldron.BrewLavaCauldronBlock;
 import com.tellik.crookedcraft.brewing.cauldron.BrewPowderSnowCauldronBlock;
 import com.tellik.crookedcraft.brewing.cauldron.BrewWaterCauldronBlock;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.material.MapColor;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -26,29 +26,45 @@ public final class ModBrewingBlocks {
     public static final DeferredRegister<Item> ITEMS =
             DeferredRegister.create(ForgeRegistries.ITEMS, CrookedCraft.MODID);
 
+    // ---- Shared Properties ----
+    // Goal: breaks like a normal block, no tool requirement, drops via loot tables.
+    private static BlockBehaviour.Properties brewCauldronProps() {
+        return BlockBehaviour.Properties.of()
+                .mapColor(MapColor.METAL)
+                .strength(2.0F, 6.0F)   // tweak later if you want it faster/slower
+                .sound(SoundType.METAL)
+                .noOcclusion();
+    }
+
+    private static BlockBehaviour.Properties brewLavaCauldronProps() {
+        return brewCauldronProps()
+                .lightLevel(state -> 15);
+    }
+
     // ---- Blocks ----
 
     public static final RegistryObject<Block> BREW_CAULDRON = BLOCKS.register(
             "brew_cauldron",
-            () -> new BrewCauldronBlock(BlockBehaviour.Properties.copy(Blocks.CAULDRON))
+            () -> new BrewCauldronBlock(brewCauldronProps())
     );
 
     /**
-     * Internal state blocks (not normally obtainable as items).
+     * Internal state blocks (not normally obtainable as items),
+     * but MUST have loot tables so breaking any state returns brew_cauldron.
      */
     public static final RegistryObject<Block> BREW_WATER_CAULDRON = BLOCKS.register(
             "brew_water_cauldron",
-            () -> new BrewWaterCauldronBlock(BlockBehaviour.Properties.copy(Blocks.WATER_CAULDRON))
+            () -> new BrewWaterCauldronBlock(brewCauldronProps())
     );
 
     public static final RegistryObject<Block> BREW_LAVA_CAULDRON = BLOCKS.register(
             "brew_lava_cauldron",
-            () -> new BrewLavaCauldronBlock(BlockBehaviour.Properties.copy(Blocks.LAVA_CAULDRON))
+            () -> new BrewLavaCauldronBlock(brewLavaCauldronProps())
     );
 
     public static final RegistryObject<Block> BREW_POWDER_SNOW_CAULDRON = BLOCKS.register(
             "brew_powder_snow_cauldron",
-            () -> new BrewPowderSnowCauldronBlock(BlockBehaviour.Properties.copy(Blocks.POWDER_SNOW_CAULDRON))
+            () -> new BrewPowderSnowCauldronBlock(brewCauldronProps())
     );
 
     // ---- Items ----

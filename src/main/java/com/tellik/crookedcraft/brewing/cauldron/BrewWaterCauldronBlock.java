@@ -1,10 +1,13 @@
 package com.tellik.crookedcraft.brewing.cauldron;
 
+import com.tellik.crookedcraft.brewing.BrewingVesselData;
 import com.tellik.crookedcraft.brewing.ModBrewingBlocks;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.LayeredCauldronBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -13,14 +16,6 @@ import net.minecraft.world.level.block.state.properties.EnumProperty;
 
 public final class BrewWaterCauldronBlock extends LayeredCauldronBlock {
 
-    /**
-     * This property is the “server->client truth” that allows the client to tint water based on brew state
-     * without any custom networking.
-     *
-     * NONE: normal water (biome tint)
-     * COMPLETE: successful brew waiting to bottle
-     * DOOMED: ruined brew (black/smoke later)
-     */
     public static final EnumProperty<BrewState> BREW_STATE = EnumProperty.create("brew_state", BrewState.class);
 
     public enum BrewState implements StringRepresentable {
@@ -36,7 +31,6 @@ public final class BrewWaterCauldronBlock extends LayeredCauldronBlock {
     public BrewWaterCauldronBlock(Properties props) {
         super(props, (precip) -> precip == Biome.Precipitation.RAIN, BrewCauldronInteractionMaps.waterMap());
 
-        // The block may be created in-world via state swaps; ensure default is sane.
         this.registerDefaultState(
                 this.stateDefinition.any()
                         .setValue(LEVEL, 1)
@@ -58,5 +52,25 @@ public final class BrewWaterCauldronBlock extends LayeredCauldronBlock {
     protected void createBlockStateDefinition(StateDefinition.Builder<net.minecraft.world.level.block.Block, BlockState> builder) {
         super.createBlockStateDefinition(builder);
         builder.add(BREW_STATE);
+    }
+
+    @Override
+    public void handlePrecipitation(BlockState state, Level level, BlockPos pos, Biome.Precipitation precipitation) {
+        int before = state.getValue(LEVEL);
+
+        super.handlePrecipitation(state, level, pos, precipitation);
+
+        if (!(level instanceof ServerLevel serverLevel)) return;
+
+        BlockState after = level.getBlockState(pos);
+        if (!(after.getBlock() instanceof BrewWaterCauldronBlock)) return;
+
+        int afterLevel = after.getValue(LEVEL);
+        if (afterLevel != before && afterLevel > 0) {
+            // CRITICAL: rain-incremented water levels must still be tracked so boil starts without needing an ingredient attempt.
+            BrewingVesselData data = BrewingVesselData.get(serverLevel);
+            data.ensureTracked(pos.asLong());
+            data.setDirty();
+        }
     }
 }

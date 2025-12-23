@@ -1,5 +1,5 @@
 {
   "variants": {
-    "": { "model": "minecraft:block/lava_cauldron" }
+    "": { "model": "crookedcraft:block/brew_lava_cauldron" }
   }
 }
