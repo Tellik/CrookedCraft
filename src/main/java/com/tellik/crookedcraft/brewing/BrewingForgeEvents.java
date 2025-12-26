@@ -1,8 +1,11 @@
 package com.tellik.crookedcraft.brewing;
 
+import com.tellik.crookedcraft.brewing.cauldron.BrewLavaCauldronBlock;
 import com.tellik.crookedcraft.brewing.cauldron.BrewPowderSnowCauldronBlock;
 import com.tellik.crookedcraft.brewing.cauldron.BrewWaterCauldronBlock;
+import com.tellik.crookedcraft.brewing.engine.BrewStatusFormatter;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.cauldron.CauldronInteraction;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
@@ -16,9 +19,12 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.LayeredCauldronBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -28,9 +34,7 @@ import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.joml.Vector3f;
 
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 
 @Mod.EventBusSubscriber(modid = "crookedcraft", bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -38,9 +42,34 @@ public final class BrewingForgeEvents {
 
     private static final String MSG_RUINED = "The brew is ruined. Discard it (sneak + empty hand).";
 
+    // -------------------------
+    // Thermal constants (tune later; can be datapack-driven later)
+    // -------------------------
+    private static final float AMBIENT_TEMP_C = 12.0f;
+
+    private static final float WATER_BOIL_C = 100.0f;
+
+    private static final float SNOW_BASE_C = -10.0f;
+    private static final float SNOW_MELT_C = 0.0f;
+
+    private static final float LAVA_BOIL_C = 1000.0f;
+    private static final float LAVA_SOLIDIFY_C = 800.0f;
+
+    // Cooling speeds (C/tick). These were too fast in your previous version.
+    // ~20 ticks/sec. So 0.05C/tick = 1C/sec.
+    private static final float COOL_WATER_C_PER_TICK = 0.08f; // ~1.6C/sec
+    private static final float COOL_SNOW_C_PER_TICK  = 0.05f; // ~1.0C/sec
+    private static final float COOL_LAVA_C_PER_TICK  = 0.25f; // ~5.0C/sec (so obsidian happens in sane time)
+
+    private static final float MIN_HEAT_STEP_C_PER_TICK = 0.001f;
+    private static final float DIRTY_EPS = 0.0005f;
+
+    private BrewingForgeEvents() {}
+
     @SubscribeEvent
     public static void onAddReloadListeners(AddReloadListenerEvent event) {
         event.addListener(new HeatSourceReloadListener());
+        event.addListener(new ThermalTransformReloadListener());
     }
 
     @SubscribeEvent
@@ -78,7 +107,7 @@ public final class BrewingForgeEvents {
                 return;
             }
 
-            sendStatus(player, serverLevel, pos, state);
+            BrewStatusFormatter.sendStatus(player, serverLevel, pos);
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
             return;
@@ -91,10 +120,13 @@ public final class BrewingForgeEvents {
             return;
         }
 
-        // Brewing logic is water-only right now.
-        if (!(state.getBlock() instanceof BrewWaterCauldronBlock)) {
-            return;
+        // Let normal CauldronInteraction behaviors run for vanilla cauldron items
+        // (buckets, bottles, washing banners/armor, dyes, etc.)
+        // BUT do NOT let it steal your custom brew container extraction.
+        if (!held.is(ModTags.Items.BREW_CONTAINERS) && CauldronInteraction.WATER.containsKey(held.getItem())) {
+            return; // do not cancel; allow block's use() to route through interaction map
         }
+
 
         // If we're going to handle this, cancel client-side to stop predicted placement flicker.
         if (level.isClientSide) {
@@ -106,24 +138,16 @@ public final class BrewingForgeEvents {
         // --- SERVER from here ---
         ServerLevel serverLevel = (ServerLevel) level;
 
-        int cauldronLevel = state.hasProperty(BlockStateProperties.LEVEL_CAULDRON)
-                ? state.getValue(BlockStateProperties.LEVEL_CAULDRON)
-                : 0;
-
-        if (cauldronLevel <= 0) {
-            return;
-        }
+        int cauldronLevel = getCauldronLevel(state);
+        if (cauldronLevel <= 0) return;
 
         long posLong = pos.asLong();
         BrewingVesselData data = BrewingVesselData.get(serverLevel);
         data.ensureTracked(posLong);
         BrewingVesselData.VesselState v = data.getTrackedState(posLong);
 
-        HeatSourceManager.HeatInfo heat = HeatSourceManager.getHeatInfo(serverLevel, pos);
-        if (heat != null && v.boilTicksRequired <= 0) {
-            v.boilTicksRequired = heat.boilTicksRequired;
-            data.setDirty();
-        }
+        // IMPORTANT: In the new thermal system, boilTicksRequired is legacy.
+        // Do not try to infer/overwrite it here. Boiling comes from v.tempC vs boil point.
 
         // Keep tint synced
         syncBrewTintIfNeeded(serverLevel, pos, state, v);
@@ -137,9 +161,6 @@ public final class BrewingForgeEvents {
             if (v.doomed) {
                 ItemStack out = new ItemStack(ModBrewingItems.BLACK_SLUDGE.get());
 
-                // VANILLA-STYLE delivery to avoid silent deletion:
-                // - If held stack is size 1, replace in-hand with the result
-                // - If held stack > 1, shrink 1 and insert/drop result
                 deliverResultLikeVanilla(player, InteractionHand.MAIN_HAND, held, out, serverLevel, pos);
 
                 serverLevel.playSound(null, pos, SoundEvents.BOTTLE_FILL, SoundSource.BLOCKS, 0.7f, 0.8f);
@@ -182,7 +203,6 @@ public final class BrewingForgeEvents {
                 return;
             }
 
-            // VANILLA-STYLE delivery to avoid silent deletion
             deliverResultLikeVanilla(player, InteractionHand.MAIN_HAND, held, out, serverLevel, pos);
 
             serverLevel.playSound(null, pos, SoundEvents.BOTTLE_FILL, SoundSource.BLOCKS, 0.7f, 1.0f);
@@ -283,8 +303,6 @@ public final class BrewingForgeEvents {
      * Vanilla-style item delivery:
      * - If the held container stack is EXACTLY 1: replace the held item with the result (no inventory slot needed).
      * - If the held container stack > 1: consume 1, then try to add the result; if it cannot fit, force-drop it.
-     *
-     * This is the most reliable way to avoid "full inventory silently deletes output".
      */
     private static void deliverResultLikeVanilla(Player player,
                                                  InteractionHand hand,
@@ -295,46 +313,31 @@ public final class BrewingForgeEvents {
 
         if (result.isEmpty()) return;
 
-        // Always work with a copy so nothing upstream can mutate the recipe output reference.
         ItemStack out = result.copy();
 
-        // --- Case A: exactly 1 container in-hand -> consume it by clearing the hand,
-        // then give the result back into that now-empty hand slot (main hand).
         if (heldContainer.getCount() == 1) {
-
             if (hand == InteractionHand.MAIN_HAND) {
                 int slot = player.getInventory().selected;
-
-                // Consume the container (it becomes the output).
                 player.getInventory().setItem(slot, ItemStack.EMPTY);
-
-                // Forge helper: inserts; if it can't, it drops at player's position.
                 ItemHandlerHelper.giveItemToPlayer(player, out, slot);
             } else {
-                // Offhand case (if you ever allow it): clear offhand then give.
                 player.setItemInHand(hand, ItemStack.EMPTY);
                 ItemHandlerHelper.giveItemToPlayer(player, out);
             }
 
-            // Force an inventory sync to avoid client-side "ghost" states.
             player.getInventory().setChanged();
             player.containerMenu.broadcastChanges();
             return;
         }
 
-        // --- Case B: container stack > 1 -> consume one, then give the output.
         heldContainer.shrink(1);
-
-        // Inserts; if it can't, drops at player's position.
         ItemHandlerHelper.giveItemToPlayer(player, out);
 
         player.getInventory().setChanged();
         player.containerMenu.broadcastChanges();
     }
 
-
     private static void handleDiscard(ServerLevel serverLevel, BlockPos pos, BlockState state, Player player, PlayerInteractEvent.RightClickBlock event) {
-        // If truly empty brew cauldron: don't claim discard.
         if (state.is(ModBrewingBlocks.BREW_CAULDRON.get())) {
             player.displayClientMessage(Component.literal("The cauldron is already empty."), false);
             event.setCancellationResult(InteractionResult.SUCCESS);
@@ -345,9 +348,8 @@ public final class BrewingForgeEvents {
         BrewingVesselData data = BrewingVesselData.get(serverLevel);
         BrewingVesselData.VesselState v = data.getStateIfTracked(pos.asLong());
 
-        // DOOMED discard chance drop
         if (v != null && v.doomed) {
-            float chance = 0.10f; // tune later
+            float chance = 0.10f;
             if (serverLevel.getRandom().nextFloat() <= chance) {
                 ItemStack drop = new ItemStack(ModBrewingItems.DOOMED_SLUDGE.get());
                 Containers.dropItemStack(serverLevel, pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5, drop);
@@ -391,77 +393,15 @@ public final class BrewingForgeEvents {
         }
     }
 
-    private static void sendStatus(Player player, ServerLevel level, BlockPos pos, BlockState state) {
-        player.displayClientMessage(Component.literal("=== CrookedCraft Brewing ==="), false);
-
-        HeatSourceManager.HeatInfo heat = HeatSourceManager.getHeatInfo(level, pos);
-        boolean hasHeat = (heat != null);
-
-        VesselInfo vessel = VesselInfo.fromState(state);
-        BrewingVesselData data = BrewingVesselData.get(level);
-        BrewingVesselData.VesselState v = (vessel.type == VesselType.WATER) ? data.getStateIfTracked(pos.asLong()) : null;
-
-        List<String> phases = computePhases(vessel, hasHeat, v);
-        player.displayClientMessage(Component.literal("Phase: " + String.join(" + ", phases)), false);
-
-        player.displayClientMessage(Component.literal("Vessel: " + vessel.displayName), false);
-        player.displayClientMessage(Component.literal("Heat: " + (hasHeat ? heat.asDisplayString() : "None")), false);
-
-        if (vessel.type != VesselType.WATER) return;
-
-        if (v == null || v.ingredients.isEmpty()) {
-            player.displayClientMessage(Component.literal("Ingredients: (none)"), false);
-        } else {
-            player.displayClientMessage(Component.literal("Ingredients:"), false);
-            for (Map.Entry<ResourceLocation, Integer> e : v.ingredients.entrySet()) {
-                player.displayClientMessage(Component.literal(" - " + e.getKey() + " x" + e.getValue()), false);
-            }
-        }
-
-        if (v != null && v.matchedRecipeId != null) {
-            player.displayClientMessage(Component.literal("Matched: " + v.matchedRecipeId), false);
-            player.displayClientMessage(Component.literal("Use a brew container to collect."), false);
-        } else if (v != null && v.doomed) {
-            player.displayClientMessage(Component.literal("Status: DOOMED"), false);
-            player.displayClientMessage(Component.literal("Discard: sneak + empty hand."), false);
-        } else {
-            player.displayClientMessage(Component.literal("Tip: Sneak + empty hand to discard."), false);
-        }
-    }
-
-    private static List<String> computePhases(VesselInfo vessel, boolean hasHeat, BrewingVesselData.VesselState v) {
-        List<String> out = new ArrayList<>();
-
-        if (vessel.type == VesselType.EMPTY) {
-            out.add(hasHeat ? "IDLE" : "EMPTY");
-            return out;
-        }
-
-        boolean hasPotion = (v != null && v.matchedRecipeId != null);
-        boolean hasDoomed = (v != null && v.doomed);
-        boolean hasAnyBrewState = hasPotion || hasDoomed;
-
-        if (!hasHeat) {
-            out.add(hasAnyBrewState ? "COOLING" : "COLD");
-            if (hasPotion) out.add("POTION(" + vessel.level + ")");
-            return out;
-        }
-
-        boolean isBoiling = (v != null && v.boiling);
-        out.add(isBoiling ? "BOILING" : "HEATING");
-
-        if (hasPotion) out.add("POTION(" + vessel.level + ")");
-        else if (isBoiling && v != null && !v.ingredients.isEmpty()) out.add("MIXING");
-
-        return out;
-    }
-
     private static void recordIngredient(BrewingVesselData.VesselState v, Item item) {
         ResourceLocation id = ForgeRegistries.ITEMS.getKey(item);
         if (id == null) return;
         v.ingredients.put(id, v.ingredients.getOrDefault(id, 0) + 1);
     }
 
+    // -------------------------
+    // Tick / thermal sim
+    // -------------------------
     @SubscribeEvent
     public static void onLevelTick(TickEvent.LevelTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
@@ -480,56 +420,150 @@ public final class BrewingForgeEvents {
 
             BlockState state = serverLevel.getBlockState(pos);
 
-            if (!(state.getBlock() instanceof BrewWaterCauldronBlock)) {
+            boolean isWater = state.getBlock() instanceof BrewWaterCauldronBlock;
+            boolean isLava  = state.getBlock() instanceof BrewLavaCauldronBlock;
+            boolean isSnow  = state.getBlock() instanceof BrewPowderSnowCauldronBlock;
+
+            // If it isn't one of our tracked fluid vessels anymore, untrack.
+            if (!isWater && !isLava && !isSnow) {
                 it.remove();
                 data.setDirty();
                 continue;
             }
 
-            int level = state.hasProperty(BlockStateProperties.LEVEL_CAULDRON)
-                    ? state.getValue(BlockStateProperties.LEVEL_CAULDRON)
-                    : 0;
+            int cauldronLevel = getCauldronLevel(state);
 
-            syncBrewTintIfNeeded(serverLevel, pos, state, v);
+            // Per-fluid model
+            final float boilTemp;
+            final float equilibriumTemp;
+            final float startTemp;
+            final float coolPerTick;
 
-            if (level <= 0) {
-                if (!v.ingredients.isEmpty() || v.doomed || v.matchedRecipeId != null || v.boiling || v.boilProgress != 0 || v.boilTicksRequired != 0) {
-                    v.clearAll();
-                    data.setDirty();
-                }
-                continue;
+            if (isWater) {
+                boilTemp = WATER_BOIL_C;
+                equilibriumTemp = AMBIENT_TEMP_C;
+                startTemp = AMBIENT_TEMP_C;
+                coolPerTick = COOL_WATER_C_PER_TICK;
+            } else if (isSnow) {
+                boilTemp = WATER_BOIL_C;
+                equilibriumTemp = SNOW_BASE_C;
+                startTemp = SNOW_BASE_C;
+                coolPerTick = COOL_SNOW_C_PER_TICK;
+            } else {
+                boilTemp = LAVA_BOIL_C;
+                equilibriumTemp = AMBIENT_TEMP_C;
+                startTemp = LAVA_BOIL_C;
+                coolPerTick = COOL_LAVA_C_PER_TICK;
             }
 
-            Integer required = HeatSourceManager.getBoilTicksFor(serverLevel, pos);
-            if (required == null) {
-                if (v.boilProgress != 0 || v.boiling || v.boilTicksRequired != 0) {
-                    v.boilProgress = 0;
-                    v.boilTicksRequired = 0;
-                    v.boiling = false;
-                    data.setDirty();
-                }
-                continue;
+            // Init temps if needed.
+            if (Float.isNaN(v.tempC)) {
+                v.tempC = startTemp;
+                v.lastTempC = startTemp;
+
+                // Keep legacy fields inert under the new system
+                v.boilProgress = 0;
+                v.boilTicksRequired = 0;
+                v.pendingFillTicks = 0;
+
+                data.setDirty();
             }
 
+            float oldTemp = v.tempC;
             boolean wasBoiling = v.boiling;
 
-            if (v.boilTicksRequired != required) {
-                v.boilTicksRequired = required;
-                data.setDirty();
+            // Heat profile (datapack-driven)
+            HeatSourceManager.HeatProfile heat = HeatSourceManager.getHeatProfile(serverLevel, pos);
+
+            // Strength: affects max achievable temp (your “small amount can boil with weak heat” mechanic)
+            float strengthBonus = getStrengthBonus(cauldronLevel);
+
+            // Speed: affects heating rate only (requested: L1 +66%, L2 +33%)
+            float speedBonus = getSpeedBonus(cauldronLevel);
+
+            float targetTemp;
+            float heatPerTick;
+
+            if (heat != null) {
+                targetTemp = heat.maxTempC() * strengthBonus;
+                heatPerTick = heat.heatPerTickC();
+            } else {
+                targetTemp = equilibriumTemp;
+                heatPerTick = 0.0f;
             }
 
-            if (!v.boiling) {
-                v.boilProgress++;
-                data.setDirty();
+            // Approach target temperature
+            if (heat != null) {
+                // Active source: approach the source target using its rate (speed bonus applies)
+                float step = heat.heatPerTickC() * speedBonus;
 
-                if (v.boilProgress >= required) {
-                    v.boiling = true;
-                    data.setDirty();
-                    serverLevel.playSound(null, pos, SoundEvents.BREWING_STAND_BREW, SoundSource.BLOCKS, 0.6f, 1.0f);
+                if (v.tempC < targetTemp) {
+                    v.tempC = Math.min(v.tempC + step, targetTemp);
+                } else if (v.tempC > targetTemp) {
+                    v.tempC = Math.max(v.tempC - step, targetTemp);
+                }
+            } else {
+                // No source: passive drift toward equilibrium using fluid-specific cooling rate
+                if (v.tempC < targetTemp) {
+                    // You could optionally allow passive warming here, but typically "no heat" shouldn't warm faster than 0.
+                    // If you DO want passive warming back to ambient, keep a small drift step; otherwise do nothing.
+                    v.tempC = Math.min(v.tempC + 0.0f, targetTemp);
+                } else if (v.tempC > targetTemp) {
+                    v.tempC = Math.max(v.tempC - coolPerTick, targetTemp);
                 }
             }
 
-            if (v.boiling) {
+
+            // Powder snow melt -> water conversion
+            if (isSnow && v.tempC >= SNOW_MELT_C) {
+                int newWaterLevel = 1; // for now
+
+                BlockState newState = ModBrewingBlocks.BREW_WATER_CAULDRON.get().defaultBlockState()
+                        .setValue(LayeredCauldronBlock.LEVEL, newWaterLevel)
+                        .setValue(BrewWaterCauldronBlock.BREW_STATE, BrewWaterCauldronBlock.BrewState.NONE);
+
+                serverLevel.setBlock(pos, newState, 3);
+                serverLevel.gameEvent(null, GameEvent.BLOCK_CHANGE, pos);
+
+                v.doomed = false;
+                v.matchedRecipeId = null;
+                v.ingredients.clear();
+
+                v.tempC = 0.1f;
+                v.lastTempC = 0.0f;
+
+                data.setDirty();
+                continue;
+            }
+
+            // Thermal transformations (datapack-driven)
+            // Applies to ANY brew vessel type (water/lava/snow) if a transform exists for the current block.
+            {
+                boolean applied = ThermalTransformManager.tryApplyCoolingTransform(serverLevel, pos, state, v, it, data);
+                if (applied) {
+                    // transform manager already handled state/dirty/untrack/continue
+                    continue;
+                }
+            }
+
+
+            // Derived boiling
+            if (isWater) {
+                boolean canBoil = (heat != null) && ((heat.maxTempC() * strengthBonus) >= WATER_BOIL_C);
+                v.boiling = canBoil && (v.tempC >= WATER_BOIL_C - 0.001f);
+            } else if (isLava) {
+                v.boiling = (v.tempC >= LAVA_BOIL_C - 0.001f);
+            } else {
+                v.boiling = false;
+            }
+
+            // Sync tint (water only)
+            if (isWater) {
+                syncBrewTintIfNeeded(serverLevel, pos, state, v);
+            }
+
+            // Particles/feedback (water only)
+            if (isWater && v.boiling) {
                 double x = pos.getX() + 0.5;
                 double y = pos.getY() + 0.9;
                 double z = pos.getZ() + 0.5;
@@ -537,6 +571,7 @@ public final class BrewingForgeEvents {
                 serverLevel.sendParticles(ParticleTypes.BUBBLE, x, y, z, 2, 0.15, 0.05, 0.15, 0.01);
 
                 if (!wasBoiling) {
+                    serverLevel.playSound(null, pos, SoundEvents.BREWING_STAND_BREW, SoundSource.BLOCKS, 0.6f, 1.0f);
                     serverLevel.sendParticles(ParticleTypes.BUBBLE_POP, x, y, z, 6, 0.20, 0.05, 0.20, 0.02);
                 }
 
@@ -546,9 +581,8 @@ public final class BrewingForgeEvents {
                         serverLevel.sendParticles(ParticleTypes.ASH, x, y, z, 1, 0.12, 0.02, 0.12, 0.01);
                     }
                 } else if (v.matchedRecipeId != null) {
-                    CauldronBrewRecipe recipe = null;
                     var opt = serverLevel.getRecipeManager().byKey(v.matchedRecipeId);
-                    if (opt.isPresent() && opt.get() instanceof CauldronBrewRecipe r) recipe = r;
+                    CauldronBrewRecipe recipe = (opt.isPresent() && opt.get() instanceof CauldronBrewRecipe r) ? r : null;
 
                     if (recipe != null) {
                         int color = net.minecraft.world.item.alchemy.PotionUtils.getColor(recipe.createResultStack());
@@ -561,38 +595,47 @@ public final class BrewingForgeEvents {
                     }
                 }
             }
+
+            boolean tempChanged = Math.abs(v.tempC - oldTemp) > DIRTY_EPS;
+            boolean boilChanged = (v.boiling != wasBoiling);
+
+            if (tempChanged || boilChanged) {
+                data.setDirty();
+            }
+
+            // Keep legacy boil counters inert
+            if (v.boilProgress != 0 || v.boilTicksRequired != 0) {
+                v.boilProgress = 0;
+                v.boilTicksRequired = 0;
+                data.setDirty();
+            }
         }
     }
 
-    private enum VesselType { EMPTY, WATER, LAVA, POWDER_SNOW }
+    /** Strength bonus affects max achievable temperature. */
+    private static float getStrengthBonus(int cauldronLevel) {
+        if (cauldronLevel == 1) return 1.25f;
+        if (cauldronLevel == 2) return 1.10f;
+        return 1.0f;
+    }
 
-    private static final class VesselInfo {
-        final VesselType type;
-        final int level;
-        final String displayName;
+    /** Speed bonus affects heating rate only (requested). */
+    private static float getSpeedBonus(int cauldronLevel) {
+        if (cauldronLevel == 1) return 1.66f; // +66%
+        if (cauldronLevel == 2) return 1.33f; // +33%
+        return 1.0f;
+    }
 
-        private VesselInfo(VesselType type, int level, String displayName) {
-            this.type = type;
-            this.level = level;
-            this.displayName = displayName;
+    // -------------------------
+    // Small helpers
+    // -------------------------
+    private static int getCauldronLevel(BlockState state) {
+        if (state.hasProperty(LayeredCauldronBlock.LEVEL)) {
+            return state.getValue(LayeredCauldronBlock.LEVEL);
         }
-
-        static VesselInfo fromState(BlockState state) {
-            if (state.getBlock() instanceof BrewWaterCauldronBlock) {
-                int lvl = state.hasProperty(BlockStateProperties.LEVEL_CAULDRON) ? state.getValue(BlockStateProperties.LEVEL_CAULDRON) : 0;
-                return new VesselInfo(VesselType.WATER, lvl, "Brew Cauldron (Water " + lvl + "/3)");
-            }
-
-            if (state.is(ModBrewingBlocks.BREW_LAVA_CAULDRON.get())) {
-                return new VesselInfo(VesselType.LAVA, 3, "Brew Cauldron (Lava)");
-            }
-
-            if (state.getBlock() instanceof BrewPowderSnowCauldronBlock) {
-                int lvl = state.hasProperty(BlockStateProperties.LEVEL_CAULDRON) ? state.getValue(BlockStateProperties.LEVEL_CAULDRON) : 0;
-                return new VesselInfo(VesselType.POWDER_SNOW, lvl, "Brew Cauldron (Powder Snow " + lvl + "/3)");
-            }
-
-            return new VesselInfo(VesselType.EMPTY, 0, "Brew Cauldron (Empty)");
+        if (state.hasProperty(BlockStateProperties.LEVEL_CAULDRON)) {
+            return state.getValue(BlockStateProperties.LEVEL_CAULDRON);
         }
+        return 3;
     }
 }

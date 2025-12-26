@@ -1,0 +1,17 @@
+{
+  "cooling": {
+    "crookedcraft:brew_lava_cauldron": {
+      "at_or_below_temp_c": 800.0,
+      "set_block": "crookedcraft:brew_cauldron",
+      "drop": { "item": "minecraft:obsidian", "count": 1 },
+      "untrack": true
+    },
+    "crookedcraft:brew_water_cauldron": {
+      "at_or_below_temp_c": 0.0,
+      "required_level": 3,
+      "set_block": "crookedcraft:brew_cauldron",
+      "drop": { "item": "minecraft:ice", "count": 1 },
+      "untrack": true
+    }
+  }
+}

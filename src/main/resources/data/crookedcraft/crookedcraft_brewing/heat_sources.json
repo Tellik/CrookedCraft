@@ -1,9 +1,54 @@
 {
   "scan_mode": "below_only",
-  "sources": [
-    { "block": "minecraft:fire", "boil_ticks": 240 },
-    { "block": "minecraft:torch", "boil_ticks": 260 },
-    { "block": "minecraft:campfire", "boil_ticks": 200 },
-    { "fluid": "minecraft:lava", "boil_ticks": 120 }
-  ]
+  "heat_per_tick_scale": 0.1,
+
+  "blocks": {
+    "minecraft:torch": {
+      "max_temp_c": 80.0,
+      "heat_per_tick_c": 0.6
+    },
+    "minecraft:wall_torch": {
+      "max_temp_c": 80.0,
+      "heat_per_tick_c": 0.6
+    },
+
+    "minecraft:campfire": {
+      "max_temp_c": 200.0,
+      "heat_per_tick_c": 1.2
+    },
+    "minecraft:soul_campfire": {
+      "max_temp_c": 250.0,
+      "heat_per_tick_c": 1.4
+    },
+
+    "minecraft:furnace": {
+      "max_temp_c": 220.0,
+      "heat_per_tick_c": 1.4
+    },
+    "minecraft:blast_furnace": {
+      "max_temp_c": 260.0,
+      "heat_per_tick_c": 1.8
+    },
+    "minecraft:smoker": {
+      "max_temp_c": 230.0,
+      "heat_per_tick_c": 1.5
+    },
+
+    "minecraft:magma_block": {
+      "max_temp_c": 1000.0,
+      "heat_per_tick_c": 6.0
+    },
+
+    "minecraft:ice":       { "max_temp_c": -10.0, "heat_per_tick_c": 6.0 },
+    "minecraft:packed_ice":{ "max_temp_c": -25.0, "heat_per_tick_c": 7.5 },
+    "minecraft:blue_ice":  { "max_temp_c": -40.0, "heat_per_tick_c": 9.0 }
+
+  },
+
+  "fluids": {
+    "minecraft:lava": {
+      "max_temp_c": 1000.0,
+      "heat_per_tick_c": 6.0
+    }
+  }
 }

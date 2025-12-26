@@ -14,26 +14,20 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import org.slf4j.Logger;
 
+import javax.annotation.ParametersAreNonnullByDefault;
+import net.minecraft.MethodsReturnNonnullByDefault;
 import java.util.Map;
 import java.util.Objects;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
-
-import javax.annotation.ParametersAreNonnullByDefault;
-
-
 /**
- * Hooks vanilla cauldron fill interactions (which do NOT reliably fire RightClickBlock).
-
- * We wrap the existing EMPTY/WATER interaction entries and delegate to vanilla first,
- * then (if the block state became WATER_CAULDRON) we "arm" our brewing tracking so the
- * boiling tick loop runs without requiring any further player interaction.
-
- * This keeps cauldrons vanilla, but makes Brewing v1 automation-friendly and reliable.
+ * Wraps VANILLA cauldron interaction tables so vanilla fill logic runs,
+ * then converts any resulting vanilla cauldron state into CrookedCraft brew variants
+ * (water/powder snow/lava) and arms thermal tracking.
+ *
+ * This is what prevents "powder snow bucket -> vanilla powder snow cauldron".
  */
 public final class CauldronInteractionShim {
     private static final Logger LOGGER = LogUtils.getLogger();
-
     private static boolean installed = false;
 
     private CauldronInteractionShim() {}
@@ -44,16 +38,23 @@ public final class CauldronInteractionShim {
 
         int wrapped = 0;
 
-        // 1) Empty cauldron + water bucket -> becomes WATER_CAULDRON
+        // EMPTY -> (water/lava/snow) fills
         wrapped += wrapInteraction(CauldronInteraction.EMPTY, Items.WATER_BUCKET);
+        wrapped += wrapInteraction(CauldronInteraction.EMPTY, Items.LAVA_BUCKET);
+        wrapped += wrapInteraction(CauldronInteraction.EMPTY, Items.POWDER_SNOW_BUCKET);
 
-        // 2) Optional: empty cauldron + water potion bottle can add water (vanilla behavior)
-        // The map key is Items.POTION (item type), so this wrapper will run for ANY potion.
-        // We only arm brewing if the resulting block state is WATER_CAULDRON, so it's safe.
+        // potion fill on empty (water bottle)
         wrapped += wrapInteraction(CauldronInteraction.EMPTY, Items.POTION);
 
-        // 3) Optional: WATER cauldron + water potion bottle (increase level)
+        // WATER level increases (water bottle / water bucket)
         wrapped += wrapInteraction(CauldronInteraction.WATER, Items.POTION);
+        wrapped += wrapInteraction(CauldronInteraction.WATER, Items.WATER_BUCKET);
+
+        // POWDER_SNOW level increases (powder snow bucket)
+        wrapped += wrapInteraction(CauldronInteraction.POWDER_SNOW, Items.POWDER_SNOW_BUCKET);
+
+        // LAVA "already full" (lava bucket interaction)
+        wrapped += wrapInteraction(CauldronInteraction.LAVA, Items.LAVA_BUCKET);
 
         LOGGER.info("[crookedcraft] CauldronInteraction shim installed. Wrapped {} interaction(s).", wrapped);
     }
@@ -66,10 +67,7 @@ public final class CauldronInteractionShim {
             return 0;
         }
 
-        // Prevent double wrapping if something calls install twice or mods reorder.
-        if (original instanceof WrappedInteraction) {
-            return 0;
-        }
+        if (original instanceof WrappedInteraction) return 0;
 
         map.put(keyItem, new WrappedInteraction(original));
         return 1;
@@ -93,14 +91,15 @@ public final class CauldronInteractionShim {
         @Override
         @MethodsReturnNonnullByDefault
         @ParametersAreNonnullByDefault
-        public InteractionResult interact(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, ItemStack stack) {
-            // Delegate to vanilla first (this performs the actual fill / level change)
+        public InteractionResult interact(BlockState state, Level level, BlockPos pos, Player player,
+                                          InteractionHand hand, ItemStack stack) {
+
+            // 1) Let vanilla do the actual fill/level swap
             InteractionResult result = delegate.interact(state, level, pos, player, hand, stack);
 
-            // Only server does authoritative tracking
+            // 2) Server-side: convert vanilla cauldron variants -> brew variants + track
             if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
-                // If after vanilla interaction we have a water cauldron at pos, arm brewing
-                BrewingVesselHooks.onMaybeWaterCauldronChanged(serverLevel, pos);
+                BrewingVesselHooks.onAfterVanillaCauldronInteraction(serverLevel, pos);
             }
 
             return result;

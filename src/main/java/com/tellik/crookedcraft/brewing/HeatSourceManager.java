@@ -15,10 +15,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Holds datapack-driven heat definitions for Brewing.
+ * Datapack-driven heat definitions for Brewing (THERMAL ONLY).
  *
- * v1: We only support checking the position directly below the cauldron.
- * The heat value is "ticks required to reach boiling".
+ * - maxTempC: equilibrium/target temperature achievable by the source
+ * - heatPerTickC: approach rate toward maxTempC (always positive; maxTempC may be negative)
+ *
+ * No legacy boil ticks remain in this system.
  */
 public final class HeatSourceManager {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -27,28 +29,32 @@ public final class HeatSourceManager {
         BELOW_ONLY
     }
 
+    public record HeatProfile(float maxTempC, float heatPerTickC) {}
+
     public static final class HeatInfo {
-        public final int boilTicksRequired;
         public final boolean isFluid;
         public final ResourceLocation sourceId;
+        public final HeatProfile profile;
 
-        public HeatInfo(int boilTicksRequired, boolean isFluid, ResourceLocation sourceId) {
-            this.boilTicksRequired = boilTicksRequired;
+        public HeatInfo(boolean isFluid, ResourceLocation sourceId, HeatProfile profile) {
             this.isFluid = isFluid;
             this.sourceId = sourceId;
+            this.profile = profile;
         }
 
         public String asDisplayString() {
             String kind = isFluid ? "Fluid" : "Block";
-            return kind + ": " + sourceId + " (boil_ticks=" + boilTicksRequired + ")";
+            String therm = (profile != null)
+                    ? String.format("max=%.1fC, dT=%.3fC/t", profile.maxTempC(), profile.heatPerTickC())
+                    : "thermal=-";
+            return kind + ": " + sourceId + " (" + therm + ")";
         }
     }
 
     private static volatile ScanMode scanMode = ScanMode.BELOW_ONLY;
 
-    // Maps actual registry objects to boil ticks.
-    private static volatile Map<Block, Integer> blockHeat = Collections.emptyMap();
-    private static volatile Map<Fluid, Integer> fluidHeat = Collections.emptyMap();
+    private static volatile Map<Block, HeatProfile> blockProfiles = Collections.emptyMap();
+    private static volatile Map<Fluid, HeatProfile> fluidProfiles = Collections.emptyMap();
 
     private HeatSourceManager() {}
 
@@ -56,80 +62,111 @@ public final class HeatSourceManager {
         return scanMode;
     }
 
-    public static void applyFromDatapack(ScanMode newMode, Map<ResourceLocation, Integer> blocks, Map<ResourceLocation, Integer> fluids) {
-        Map<Block, Integer> resolvedBlocks = new HashMap<>();
-        for (Map.Entry<ResourceLocation, Integer> e : blocks.entrySet()) {
+    /**
+     * Apply datapack values.
+     * @param newMode scan mode
+     * @param blocks map of block id -> entry
+     * @param fluids map of fluid id -> entry
+     * @param heatPerTickScale global scale applied to all heatPerTickC
+     */
+    public static void applyFromDatapackThermal(
+            ScanMode newMode,
+            Map<ResourceLocation, HeatEntry> blocks,
+            Map<ResourceLocation, HeatEntry> fluids,
+            float heatPerTickScale
+    ) {
+        Map<Block, HeatProfile> resolvedBlockProfiles = new HashMap<>();
+        Map<Fluid, HeatProfile> resolvedFluidProfiles = new HashMap<>();
+
+        // Blocks
+        for (Map.Entry<ResourceLocation, HeatEntry> e : blocks.entrySet()) {
             ResourceLocation id = e.getKey();
-            int boilTicks = e.getValue();
+            HeatEntry he = e.getValue();
 
             Block b = ForgeRegistries.BLOCKS.getValue(id);
             if (b == null) {
                 LOGGER.warn("[crookedcraft] Unknown heat block id '{}' - ignoring.", id);
                 continue;
             }
-            resolvedBlocks.put(b, boilTicks);
+
+            if (he.profile != null) {
+                HeatProfile p = he.profile;
+                HeatProfile scaled = new HeatProfile(p.maxTempC(), p.heatPerTickC() * heatPerTickScale);
+                resolvedBlockProfiles.put(b, scaled);
+            }
         }
 
-        Map<Fluid, Integer> resolvedFluids = new HashMap<>();
-        for (Map.Entry<ResourceLocation, Integer> e : fluids.entrySet()) {
+        // Fluids
+        for (Map.Entry<ResourceLocation, HeatEntry> e : fluids.entrySet()) {
             ResourceLocation id = e.getKey();
-            int boilTicks = e.getValue();
+            HeatEntry he = e.getValue();
 
             Fluid f = ForgeRegistries.FLUIDS.getValue(id);
             if (f == null) {
                 LOGGER.warn("[crookedcraft] Unknown heat fluid id '{}' - ignoring.", id);
                 continue;
             }
-            resolvedFluids.put(f, boilTicks);
-        }
 
-        scanMode = newMode;
-        blockHeat = Collections.unmodifiableMap(resolvedBlocks);
-        fluidHeat = Collections.unmodifiableMap(resolvedFluids);
-
-        LOGGER.info("[crookedcraft] Loaded {} heat blocks and {} heat fluids. scan_mode={}",
-                blockHeat.size(), fluidHeat.size(), scanMode);
-    }
-
-    /**
-     * Returns boil ticks required for the heat source at the configured scan positions.
-     * v1 scan_mode BELOW_ONLY: only checks cauldronPos.below().
-     *
-     * @return null if no heat source found.
-     */
-    public static Integer getBoilTicksFor(Level level, BlockPos cauldronPos) {
-        HeatInfo info = getHeatInfo(level, cauldronPos);
-        return info == null ? null : info.boilTicksRequired;
-    }
-
-    /**
-     * Returns detailed heat info for status/debug readouts.
-     *
-     * @return null if no heat source found.
-     */
-    public static HeatInfo getHeatInfo(Level level, BlockPos cauldronPos) {
-        // v1 only supports below-only.
-        BlockPos heatPos = cauldronPos.below();
-
-        FluidState fs = level.getFluidState(heatPos);
-        if (!fs.isEmpty()) {
-            Fluid f = fs.getType();
-            Integer ticks = fluidHeat.get(f);
-            if (ticks != null) {
-                ResourceLocation id = ForgeRegistries.FLUIDS.getKey(f);
-                if (id == null) id = ResourceLocation.fromNamespaceAndPath("minecraft", "unknown");
-                return new HeatInfo(ticks, true, id);
+            if (he.profile != null) {
+                HeatProfile p = he.profile;
+                HeatProfile scaled = new HeatProfile(p.maxTempC(), p.heatPerTickC() * heatPerTickScale);
+                resolvedFluidProfiles.put(f, scaled);
             }
         }
 
+        scanMode = newMode;
+        blockProfiles = Collections.unmodifiableMap(resolvedBlockProfiles);
+        fluidProfiles = Collections.unmodifiableMap(resolvedFluidProfiles);
+
+        LOGGER.info("[crookedcraft] Loaded heat sources: profiles(blocks={} fluids={}) scan_mode={} heat_per_tick_scale={}",
+                blockProfiles.size(), fluidProfiles.size(), scanMode, heatPerTickScale);
+    }
+
+    /** New API: returns a thermal profile if defined, else null. */
+    public static HeatProfile getHeatProfile(Level level, BlockPos cauldronPos) {
+        HeatInfo info = getHeatInfo(level, cauldronPos);
+        return (info == null) ? null : info.profile;
+    }
+
+    /**
+     * Returns detailed heat info for status/debug.
+     * scan_mode BELOW_ONLY: only checks cauldronPos.below().
+     *
+     * @return null if no heat source found
+     */
+    public static HeatInfo getHeatInfo(Level level, BlockPos cauldronPos) {
+        BlockPos heatPos = cauldronPos.below();
+
+        // Prefer fluid if present
+        FluidState fs = level.getFluidState(heatPos);
+        if (!fs.isEmpty()) {
+            Fluid f = fs.getType();
+            HeatProfile profile = fluidProfiles.get(f);
+            if (profile != null) {
+                ResourceLocation id = ForgeRegistries.FLUIDS.getKey(f);
+                if (id == null) id = ResourceLocation.fromNamespaceAndPath("minecraft", "unknown");
+                return new HeatInfo(true, id, profile);
+            }
+        }
+
+        // Then block
         Block b = level.getBlockState(heatPos).getBlock();
-        Integer ticks = blockHeat.get(b);
-        if (ticks != null) {
+        HeatProfile profile = blockProfiles.get(b);
+        if (profile != null) {
             ResourceLocation id = ForgeRegistries.BLOCKS.getKey(b);
             if (id == null) id = ResourceLocation.fromNamespaceAndPath("minecraft", "unknown");
-            return new HeatInfo(ticks, false, id);
+            return new HeatInfo(false, id, profile);
         }
 
         return null;
+    }
+
+    /** Parsed entry from datapack. */
+    public static final class HeatEntry {
+        public final HeatProfile profile; // required in thermal-only system
+
+        public HeatEntry(HeatProfile profile) {
+            this.profile = profile;
+        }
     }
 }

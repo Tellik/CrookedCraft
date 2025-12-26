@@ -19,46 +19,46 @@ import java.util.UUID;
 public final class BrewingVesselData extends SavedData {
     private static final String DATA_NAME = "crookedcraft_brewing_vessels";
 
+    // inside BrewingVesselData
+
     public static final class VesselState {
-        public int boilProgress = 0;
-        public int boilTicksRequired = 0;
-        public boolean boiling = false;
+        // --- existing fields you already have ---
+        public int pendingFillTicks;
+        public int boilProgress;
+        public int boilTicksRequired;
+        public boolean boiling;
 
-        // Brewing state
-        public boolean doomed = false;
-        public ResourceLocation matchedRecipeId = null;
+        public boolean doomed;
+        public net.minecraft.resources.ResourceLocation matchedRecipeId; // or String in your newer branch
+        public final java.util.Map<net.minecraft.resources.ResourceLocation, Integer> ingredients = new java.util.HashMap<>();
 
-        // Ingredients actually added (item id -> count)
-        public final Map<ResourceLocation, Integer> ingredients = new HashMap<>();
+        // --- NEW: authoritative thermal state ---
+        public float tempC = Float.NaN;
+        public float lastTempC = Float.NaN;
 
-        /**
-         * Short-lived window used to avoid losing tracking when a player is filling an EMPTY cauldron.
-         * Bucket use mutates the block state after the interact event finishes, so we keep the entry alive
-         * long enough for the tick loop to see it become BREW_WATER_CAULDRON.
-         */
-        public int pendingFillTicks = 0;
+        /** Clear only thermals. */
+        public void clearThermals() {
+            tempC = Float.NaN;
+            lastTempC = Float.NaN;
 
-        /**
-         * Anti-dupe support for dropped-item insertion:
-         * UUID -> ticks remaining before we allow that entity UUID again.
-         *
-         * NOT serialized: transient runtime guard only.
-         */
-        public final Map<UUID, Integer> pendingDrops = new HashMap<>();
-
-        public void clearAll() {
+            // legacy fields: keep zeroed so older code can't accidentally "revive" logic
             boilProgress = 0;
             boilTicksRequired = 0;
             boiling = false;
+            pendingFillTicks = 0;
+        }
 
+        /** Your existing clearAll should also clear thermals. */
+        public void clearAll() {
+            // existing clears you already do
             doomed = false;
             matchedRecipeId = null;
-
             ingredients.clear();
-            pendingFillTicks = 0;
-            pendingDrops.clear();
+
+            clearThermals();
         }
     }
+
 
     private final Map<Long, VesselState> vessels = new HashMap<>();
 
