@@ -3,15 +3,60 @@
     "crookedcraft:brew_lava_cauldron": {
       "at_or_below_temp_c": 800.0,
       "set_block": "crookedcraft:brew_cauldron",
-      "drop": { "item": "minecraft:obsidian", "count": 1 },
+      "drop": {
+        "item": "minecraft:obsidian",
+        "count": 1
+      },
       "untrack": true
     },
+
     "crookedcraft:brew_water_cauldron": {
       "at_or_below_temp_c": 0.0,
       "required_level": 3,
       "set_block": "crookedcraft:brew_cauldron",
-      "drop": { "item": "minecraft:ice", "count": 1 },
+      "drop": {
+        "item": "minecraft:ice",
+        "count": 1
+      },
       "untrack": true
     }
+  },
+
+  "transforms": {
+    "crookedcraft:brew_cauldron": [
+      {
+        "at_or_above_temp_c": 0.0,
+        "required_solid": "minecraft:ice",
+        "set_block": "crookedcraft:brew_water_cauldron",
+        "set_level": 3,
+        "clear_solid": true,
+        "untrack": false,
+        "reset_brew": true
+      }
+    ],
+
+    "crookedcraft:brew_powder_snow_cauldron": [
+      {
+        "at_or_above_temp_c": 0.0,
+        "required_level": 3,
+        "set_block": "crookedcraft:brew_water_cauldron",
+        "set_level": 1,
+        "clear_solid": true,
+        "untrack": false,
+        "reset_brew": true
+      }
+    ],
+
+    "crookedcraft:brew_water_cauldron": [
+      {
+        "at_or_above_temp_c": 0.0,
+        "required_solid": "minecraft:ice",
+        "set_block": "crookedcraft:brew_water_cauldron",
+        "set_level": 3,
+        "clear_solid": true,
+        "untrack": false,
+        "reset_brew": true
+      }
+    ]
   }
 }

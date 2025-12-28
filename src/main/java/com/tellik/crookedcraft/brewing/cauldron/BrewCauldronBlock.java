@@ -1,6 +1,7 @@
 package com.tellik.crookedcraft.brewing.cauldron;
 
 import com.tellik.crookedcraft.brewing.BrewingVesselData;
+import com.tellik.crookedcraft.brewing.ModBrewingBlockEntities;
 import com.tellik.crookedcraft.brewing.ModBrewingBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.sounds.SoundEvents;
@@ -11,7 +12,9 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.AbstractCauldronBlock;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.LayeredCauldronBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.material.Fluid;
@@ -20,7 +23,7 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-public final class BrewCauldronBlock extends BaseBrewAbstractCauldronBlock {
+public final class BrewCauldronBlock extends BaseBrewAbstractCauldronBlock implements EntityBlock {
     private static final float RAIN_FILL_CHANCE = 0.05F;
     private static final float POWDER_SNOW_FILL_CHANCE = 0.10F;
 
@@ -119,4 +122,10 @@ public final class BrewCauldronBlock extends BaseBrewAbstractCauldronBlock {
             level.gameEvent(null, GameEvent.BLOCK_CHANGE, pos);
         }
     }
+
+    @Override
+    public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+        return ModBrewingBlockEntities.BREW_VESSEL.get().create(pos, state);
+    }
+
 }

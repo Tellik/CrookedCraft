@@ -22,6 +22,8 @@ import net.minecraft.world.level.block.LayeredCauldronBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.gameevent.GameEvent;
 
+import static com.mojang.text2speech.Narrator.LOGGER;
+
 public final class BrewCauldronInteractionMaps {
     private BrewCauldronInteractionMaps() {}
 
@@ -30,7 +32,7 @@ public final class BrewCauldronInteractionMaps {
 
     // Thermal defaults (match your engine assumptions)
     private static final float AMBIENT_TEMP_C = 12.0f;
-    private static final float SNOW_BASE_TEMP_C = -10.0f;
+    private static final float SNOW_BASE_TEMP_C = -1000.0f;
     private static final float LAVA_TEMP_C = 1000.0f;
 
     public static Object2ObjectOpenHashMap<Item, CauldronInteraction> emptyMap() {
@@ -40,7 +42,7 @@ public final class BrewCauldronInteractionMaps {
         // Start with vanilla EMPTY behaviors
         map.putAll(CauldronInteraction.EMPTY);
 
-        // Force our custom state swaps
+        // Force our custom state swaps (ONLY for our Brew empty cauldron; methods are guarded)
         map.put(Items.WATER_BUCKET, BrewCauldronInteractionMaps::fillFromWaterBucket);
         map.put(Items.POTION, BrewCauldronInteractionMaps::fillFromWaterPotion);
         map.put(Items.LAVA_BUCKET, BrewCauldronInteractionMaps::fillFromLavaBucket);
@@ -101,6 +103,10 @@ public final class BrewCauldronInteractionMaps {
 
     private static InteractionResult fillFromWaterBucket(BlockState state, Level level, BlockPos pos,
                                                          Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD:
+        // If this interaction ever leaks into vanilla cauldron maps, DO NOT convert vanilla to brew.
+        if (!isBrewEmptyBase(state)) return InteractionResult.PASS;
+
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
         if (!player.getAbilities().instabuild) {
@@ -124,6 +130,9 @@ public final class BrewCauldronInteractionMaps {
 
     private static InteractionResult fillFromWaterPotion(BlockState state, Level level, BlockPos pos,
                                                          Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD:
+        if (!isBrewEmptyBase(state)) return InteractionResult.PASS;
+
         if (PotionUtils.getPotion(stack) != Potions.WATER) return InteractionResult.PASS;
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
@@ -148,6 +157,9 @@ public final class BrewCauldronInteractionMaps {
 
     private static InteractionResult fillFromLavaBucket(BlockState state, Level level, BlockPos pos,
                                                         Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD:
+        if (!isBrewEmptyBase(state)) return InteractionResult.PASS;
+
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
         if (!player.getAbilities().instabuild) {
@@ -168,6 +180,9 @@ public final class BrewCauldronInteractionMaps {
 
     private static InteractionResult fillFromPowderSnowBucket(BlockState state, Level level, BlockPos pos,
                                                               Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD:
+        if (!isBrewEmptyBase(state)) return InteractionResult.PASS;
+
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
         if (!player.getAbilities().instabuild) {
@@ -199,6 +214,9 @@ public final class BrewCauldronInteractionMaps {
      */
     private static InteractionResult refillWaterBucketStayBrew(BlockState state, Level level, BlockPos pos,
                                                                Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD (in case of map leakage):
+        if (!state.is(ModBrewingBlocks.BREW_WATER_CAULDRON.get())) return InteractionResult.PASS;
+
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
         if (state.hasProperty(BrewWaterCauldronBlock.BREW_STATE)
@@ -231,6 +249,9 @@ public final class BrewCauldronInteractionMaps {
      */
     private static InteractionResult addPowderSnowBucketStayBrew(BlockState state, Level level, BlockPos pos,
                                                                  Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD (in case of map leakage):
+        if (!state.is(ModBrewingBlocks.BREW_POWDER_SNOW_CAULDRON.get())) return InteractionResult.PASS;
+
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
         int cur = state.getValue(LayeredCauldronBlock.LEVEL);
@@ -258,6 +279,9 @@ public final class BrewCauldronInteractionMaps {
     /** Swallow an interaction completely (prevents vanilla swapping the block). */
     private static InteractionResult noopConsume(BlockState state, Level level, BlockPos pos,
                                                  Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD (in case of map leakage):
+        if (!state.is(ModBrewingBlocks.BREW_LAVA_CAULDRON.get())) return InteractionResult.PASS;
+
         return level.isClientSide ? InteractionResult.SUCCESS : InteractionResult.CONSUME;
     }
 
@@ -267,6 +291,9 @@ public final class BrewCauldronInteractionMaps {
 
     private static InteractionResult takeWaterBucket(BlockState state, Level level, BlockPos pos,
                                                      Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD (in case of map leakage):
+        if (!state.is(ModBrewingBlocks.BREW_WATER_CAULDRON.get())) return InteractionResult.PASS;
+
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
         int lvl = state.getValue(LayeredCauldronBlock.LEVEL);
@@ -292,9 +319,11 @@ public final class BrewCauldronInteractionMaps {
         return InteractionResult.CONSUME;
     }
 
-
     private static InteractionResult takeLavaBucket(BlockState state, Level level, BlockPos pos,
                                                     Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD (in case of map leakage):
+        if (!state.is(ModBrewingBlocks.BREW_LAVA_CAULDRON.get())) return InteractionResult.PASS;
+
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
         level.setBlock(pos, ModBrewingBlocks.BREW_CAULDRON.get().defaultBlockState(), 3);
@@ -316,6 +345,9 @@ public final class BrewCauldronInteractionMaps {
 
     private static InteractionResult takePowderSnowBucket(BlockState state, Level level, BlockPos pos,
                                                           Player player, InteractionHand hand, ItemStack stack) {
+        // HARD GUARD (in case of map leakage):
+        if (!state.is(ModBrewingBlocks.BREW_POWDER_SNOW_CAULDRON.get())) return InteractionResult.PASS;
+
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
         // Design rule: 1 powder snow bucket == 3 levels.
@@ -345,10 +377,14 @@ public final class BrewCauldronInteractionMaps {
         return InteractionResult.CONSUME;
     }
 
-
     // ---------------------------
     // Helpers
     // ---------------------------
+
+    private static boolean isBrewEmptyBase(BlockState state) {
+        // Only our empty brew cauldron is allowed to "upgrade" into brew fluid variants.
+        return state.is(ModBrewingBlocks.BREW_CAULDRON.get());
+    }
 
     private static void giveOrDrop(Player player, ItemStack toGive) {
         if (!player.getInventory().add(toGive)) player.drop(toGive, false);
@@ -365,9 +401,8 @@ public final class BrewCauldronInteractionMaps {
      * Start tracking the vessel if it contains one of our tracked fluids.
      *
      * Thermal init:
-     * - initializes temp based on vessel type for immediate correctness
-     * - keeps legacy boil fields inert
-     * - optionally resets brew state when a new base fluid is introduced (resetBrew=true)
+     * - Base fills (resetBrew=true) reset the temperature baseline for the new fluid.
+     * - Top-offs (resetBrew=false) preserve existing temperature unless unknown/NaN.
      */
     private static void startTrackingIfServer(Level level, BlockPos pos, boolean resetBrew) {
         if (!(level instanceof ServerLevel sl)) return;
@@ -384,20 +419,32 @@ public final class BrewCauldronInteractionMaps {
         v.boilTicksRequired = 0;
         v.boiling = false;
 
-        // Initialize temperature ONLY if unknown (prevents top-off resetting temp)
-        if (Float.isNaN(v.tempC) || Float.isNaN(v.lastTempC)) {
-            BlockState state = sl.getBlockState(pos);
+        BlockState state = sl.getBlockState(pos);
 
+        // If this interaction represents a NEW base fill, we must reset thermal baseline,
+        // otherwise the previous fluid's temperature carries over and causes instant transforms.
+        boolean needsThermalInit =
+                resetBrew
+                        || Float.isNaN(v.tempC)
+                        || Float.isNaN(v.lastTempC);
+
+        if (needsThermalInit) {
             if (state.getBlock() instanceof BrewWaterCauldronBlock) {
+                // Water starts near ambient. (You can optionally derive this from biome later.)
+                LOGGER.error("[crookedcraft] Water Inserted");
                 v.tempC = AMBIENT_TEMP_C;
                 v.lastTempC = AMBIENT_TEMP_C;
             } else if (state.getBlock() instanceof BrewPowderSnowCauldronBlock) {
+                // Powder snow should start cold regardless of ambient, otherwise it melts instantly.
+                LOGGER.error("[crookedcraft] Snow Inserted");
                 v.tempC = SNOW_BASE_TEMP_C;
                 v.lastTempC = SNOW_BASE_TEMP_C;
             } else if (state.getBlock() instanceof BrewLavaCauldronBlock) {
+                LOGGER.error("[crookedcraft] Lava Inserted");
                 v.tempC = LAVA_TEMP_C;
                 v.lastTempC = LAVA_TEMP_C;
             } else {
+                LOGGER.error("[crookedcraft] Something Inserted?");
                 v.tempC = Float.NaN;
                 v.lastTempC = Float.NaN;
             }
@@ -418,5 +465,4 @@ public final class BrewCauldronInteractionMaps {
         if (!(level instanceof ServerLevel sl)) return;
         BrewingVesselData.get(sl).untrack(pos.asLong());
     }
-
 }

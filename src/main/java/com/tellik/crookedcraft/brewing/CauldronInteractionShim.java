@@ -1,6 +1,7 @@
 package com.tellik.crookedcraft.brewing;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.cauldron.CauldronInteraction;
 import net.minecraft.server.level.ServerLevel;
@@ -15,16 +16,17 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.slf4j.Logger;
 
 import javax.annotation.ParametersAreNonnullByDefault;
-import net.minecraft.MethodsReturnNonnullByDefault;
 import java.util.Map;
 import java.util.Objects;
 
 /**
  * Wraps VANILLA cauldron interaction tables so vanilla fill logic runs,
- * then converts any resulting vanilla cauldron state into CrookedCraft brew variants
- * (water/powder snow/lava) and arms thermal tracking.
+ * then (optionally) converts the resulting vanilla cauldron state into CrookedCraft brew variants
+ * and arms thermal tracking.
  *
- * This is what prevents "powder snow bucket -> vanilla powder snow cauldron".
+ * IMPORTANT:
+ * This shim MUST NOT affect vanilla cauldrons globally.
+ * It is only allowed to post-process interactions that started on a CrookedCraft brew vessel.
  */
 public final class CauldronInteractionShim {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -94,11 +96,15 @@ public final class CauldronInteractionShim {
         public InteractionResult interact(BlockState state, Level level, BlockPos pos, Player player,
                                           InteractionHand hand, ItemStack stack) {
 
+            // Capture whether this interaction STARTED on one of our brew vessels.
+            // This prevents vanilla cauldrons from ever being post-processed into brew variants.
+            final boolean startedOnBrewVessel = state.is(ModTags.Blocks.BREW_VESSELS);
+
             // 1) Let vanilla do the actual fill/level swap
             InteractionResult result = delegate.interact(state, level, pos, player, hand, stack);
 
-            // 2) Server-side: convert vanilla cauldron variants -> brew variants + track
-            if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
+            // 2) Server-side: ONLY if this started on a brew vessel do we post-process.
+            if (startedOnBrewVessel && !level.isClientSide && level instanceof ServerLevel serverLevel) {
                 BrewingVesselHooks.onAfterVanillaCauldronInteraction(serverLevel, pos);
             }
 

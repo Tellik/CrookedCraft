@@ -12,31 +12,33 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.UUID;
 
 @MethodsReturnNonnullByDefault
 @ParametersAreNonnullByDefault
 public final class BrewingVesselData extends SavedData {
     private static final String DATA_NAME = "crookedcraft_brewing_vessels";
 
-    // inside BrewingVesselData
-
     public static final class VesselState {
-        // --- existing fields you already have ---
+        // --- legacy fields you already have ---
         public int pendingFillTicks;
         public int boilProgress;
         public int boilTicksRequired;
         public boolean boiling;
 
         public boolean doomed;
-        public net.minecraft.resources.ResourceLocation matchedRecipeId; // or String in your newer branch
-        public final java.util.Map<net.minecraft.resources.ResourceLocation, Integer> ingredients = new java.util.HashMap<>();
+        public ResourceLocation matchedRecipeId;
+        public final Map<ResourceLocation, Integer> ingredients = new HashMap<>();
 
-        // --- NEW: authoritative thermal state ---
+        // --- authoritative thermal state ---
         public float tempC = Float.NaN;
         public float lastTempC = Float.NaN;
 
-        /** Clear only thermals. */
+        // --- NEW: single inserted solid block (optional) ---
+        // Stored as a string for NBT stability and low coupling.
+        // Example value: "minecraft:ice"
+        public String insertedSolidId = null;
+
+        /** Clear only thermals + legacy boil flags (kept inert). */
         public void clearThermals() {
             tempC = Float.NaN;
             lastTempC = Float.NaN;
@@ -48,17 +50,17 @@ public final class BrewingVesselData extends SavedData {
             pendingFillTicks = 0;
         }
 
-        /** Your existing clearAll should also clear thermals. */
+        /** Clear brew state and inserted solid. */
         public void clearAll() {
-            // existing clears you already do
             doomed = false;
             matchedRecipeId = null;
             ingredients.clear();
 
+            insertedSolidId = null;
+
             clearThermals();
         }
     }
-
 
     private final Map<Long, VesselState> vessels = new HashMap<>();
 
@@ -68,9 +70,7 @@ public final class BrewingVesselData extends SavedData {
         return level.getDataStorage().computeIfAbsent(BrewingVesselData::load, BrewingVesselData::new, DATA_NAME);
     }
 
-    /**
-     * Ensure a VesselState exists for posLong (and marks dirty if newly created).
-     */
+    /** Ensure a VesselState exists for posLong (and marks dirty if newly created). */
     public void ensureTracked(long posLong) {
         if (!vessels.containsKey(posLong)) {
             vessels.put(posLong, new VesselState());
@@ -78,17 +78,12 @@ public final class BrewingVesselData extends SavedData {
         }
     }
 
-    /**
-     * Returns an existing VesselState (must be tracked already).
-     * Prefer calling ensureTracked(posLong) first.
-     */
+    /** Returns an existing VesselState (must be tracked already). Prefer calling ensureTracked(posLong) first. */
     public VesselState getTrackedState(long posLong) {
         return vessels.get(posLong);
     }
 
-    /**
-     * Returns the VesselState if tracked, otherwise null. (Status UI helper)
-     */
+    /** Returns the VesselState if tracked, otherwise null. (Status UI helper) */
     public VesselState getStateIfTracked(long posLong) {
         return vessels.get(posLong);
     }
@@ -112,17 +107,22 @@ public final class BrewingVesselData extends SavedData {
             vtag.putLong("pos", e.getKey());
 
             VesselState v = e.getValue();
+
+            // legacy fields
             vtag.putInt("boilProgress", v.boilProgress);
             vtag.putInt("boilTicksRequired", v.boilTicksRequired);
             vtag.putBoolean("boiling", v.boiling);
+            vtag.putInt("pendingFillTicks", v.pendingFillTicks);
 
+            // brew state
             vtag.putBoolean("doomed", v.doomed);
             if (v.matchedRecipeId != null) {
                 vtag.putString("matchedRecipeId", v.matchedRecipeId.toString());
+            } else {
+                vtag.remove("matchedRecipeId");
             }
 
-            vtag.putInt("pendingFillTicks", v.pendingFillTicks);
-
+            // ingredients
             ListTag ingList = new ListTag();
             for (Map.Entry<ResourceLocation, Integer> ing : v.ingredients.entrySet()) {
                 CompoundTag it = new CompoundTag();
@@ -132,7 +132,19 @@ public final class BrewingVesselData extends SavedData {
             }
             vtag.put("ingredients", ingList);
 
-            // NOTE: pendingDrops is intentionally NOT serialized.
+            // thermals (optional but recommended)
+            if (!Float.isNaN(v.tempC)) vtag.putFloat("tempC", v.tempC);
+            else vtag.remove("tempC");
+
+            if (!Float.isNaN(v.lastTempC)) vtag.putFloat("lastTempC", v.lastTempC);
+            else vtag.remove("lastTempC");
+
+            // inserted solid
+            if (v.insertedSolidId != null && !v.insertedSolidId.isEmpty()) {
+                vtag.putString("insertedSolidId", v.insertedSolidId);
+            } else {
+                vtag.remove("insertedSolidId");
+            }
 
             list.add(vtag);
         }
@@ -150,17 +162,20 @@ public final class BrewingVesselData extends SavedData {
             long pos = vtag.getLong("pos");
 
             VesselState v = new VesselState();
+
+            // legacy fields
             v.boilProgress = vtag.getInt("boilProgress");
             v.boilTicksRequired = vtag.getInt("boilTicksRequired");
             v.boiling = vtag.getBoolean("boiling");
+            v.pendingFillTicks = vtag.getInt("pendingFillTicks");
 
+            // brew state
             v.doomed = vtag.getBoolean("doomed");
             if (vtag.contains("matchedRecipeId")) {
                 v.matchedRecipeId = ResourceLocation.tryParse(vtag.getString("matchedRecipeId"));
             }
 
-            v.pendingFillTicks = vtag.getInt("pendingFillTicks");
-
+            // ingredients
             ListTag ingList = vtag.getList("ingredients", Tag.TAG_COMPOUND);
             for (int j = 0; j < ingList.size(); j++) {
                 CompoundTag it = ingList.getCompound(j);
@@ -169,6 +184,16 @@ public final class BrewingVesselData extends SavedData {
                 if (iid != null && count > 0) {
                     v.ingredients.put(iid, count);
                 }
+            }
+
+            // thermals
+            v.tempC = vtag.contains("tempC") ? vtag.getFloat("tempC") : Float.NaN;
+            v.lastTempC = vtag.contains("lastTempC") ? vtag.getFloat("lastTempC") : Float.NaN;
+
+            // inserted solid
+            v.insertedSolidId = vtag.contains("insertedSolidId") ? vtag.getString("insertedSolidId") : null;
+            if (v.insertedSolidId != null && v.insertedSolidId.isEmpty()) {
+                v.insertedSolidId = null;
             }
 
             data.vessels.put(pos, v);

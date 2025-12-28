@@ -1,6 +1,7 @@
 package com.tellik.crookedcraft;
 
 import com.mojang.logging.LogUtils;
+import com.tellik.crookedcraft.brewing.ModBrewingBlockEntities;
 import com.tellik.crookedcraft.brewing.ModBrewingBlocks;
 import com.tellik.crookedcraft.brewing.ModBrewingItems;
 import net.minecraft.client.Minecraft;
@@ -67,6 +68,9 @@ public class CrookedCraft {
 
         // Module registers (register their blocks/items onto our DeferredRegisters)
         ModBrewingBlocks.register(modEventBus);
+
+        // NEW: block entity types for brew vessels (solids renderer storage)
+        ModBrewingBlockEntities.register(modEventBus);
 
         // Lifecycle listeners
         modEventBus.addListener(this::commonSetup);
